@@ -1,0 +1,1 @@
+DOMAIN = "compit_solar"

@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Połączenie z chmurą iNext (Compit)",
+        "data": {
+          "email": "Adres e-mail",
+          "password": "Hasło"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Nieprawidłowy e-mail lub hasło.",
+      "unknown": "Wystąpił nieznany błąd podczas łączenia."
+    },
+    "abort": {
+      "already_configured": "To konto jest już skonfigurowane."
+    }
+  },
+  "entity": {
+    "climate": {
+      "solarcomp_thermostat": {
+        "name": "Sterowanie CWU",
+        "state": {
+          "heat": "AUTO",
+          "cool": "ODLADZANIE",
+          "auto": "URLOP",
+          "off": "WYŁĄCZENIE"
+        }
+      }
+    },
+    "sensor": {
+      "collector_temperature": { "name": "Temperatura kolektora" },
+      "tank_bottom_t2": { "name": "Temperatura zasobnika (dół T2)" },
+      "tank_top_t3": { "name": "Temperatura zasobnika (góra T3)" },
+      "tank_t4": { "name": "Temperatura czujnika T4" },
+      "collector_power": { "name": "Moc kolektora" },
+      "energy_total": { "name": "Energia zebrana (całkowita)" },
+      "energy_today": { "name": "Energia dzisiaj" },
+      "energy_consumption_mwh": { "name": "Energia elektryczna zużyta (MWh)" },
+      "energy_consumption_kwh": { "name": "Energia elektryczna zużyta (kWh)" }
+    }
+  }
+}
