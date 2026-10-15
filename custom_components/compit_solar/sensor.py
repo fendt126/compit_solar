@@ -1,4 +1,5 @@
 import logging
+
 from homeassistant.components.sensor import (
     SensorEntity,
     SensorDeviceClass,
@@ -18,7 +19,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
     data_manager = hass.data[DOMAIN][entry.entry_id]
 
     sensors = [
-        # Przekazujemy klucz tłumaczenia (z pl.json) jako drugi argument
         CompitCloudSensor(data_manager, "collector_temperature", CompitParameter.COLLECTOR_TEMPERATURE, SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS, SensorStateClass.MEASUREMENT),
         CompitCloudSensor(data_manager, "tank_bottom_t2", CompitParameter.TANK_BOTTOM_T2_TEMPERATURE, SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS, SensorStateClass.MEASUREMENT),
         CompitCloudSensor(data_manager, "tank_top_t3", CompitParameter.TANK_TOP_T3_TEMPERATURE, SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS, SensorStateClass.MEASUREMENT),
@@ -34,8 +34,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class CompitCloudSensor(SensorEntity):
-    
-    # Informuje HA, że encja bierze nazwę z tłumaczeń i urządzenia docelowego
     _attr_has_entity_name = True
 
     def __init__(self, data_manager, translation_key, parameter, device_class, unit, state_class):
@@ -47,6 +45,7 @@ class CompitCloudSensor(SensorEntity):
         self._attr_device_class = device_class
         self._attr_native_unit_of_measurement = unit
         self._attr_state_class = state_class
+        self._attr_available = True
 
     @property
     def device_info(self):
@@ -68,15 +67,24 @@ class CompitCloudSensor(SensorEntity):
     async def async_update(self):
         try:
             await self._data_manager.async_update()
+            
+            # Jeśli w menedżerze danych zapisaliśmy flagę błędu (opcjonalnie) lub sprawdzamy wprost:
+            if getattr(self._data_manager, "last_update_success", True) is False:
+                self._attr_available = False
+                return
+
             val = self._data_manager.connector.get_current_value(self._data_manager.device_id, self._parameter)
             
             if val is not None:
+                self._attr_available = True
                 try:
                     self._state = float(val)
                 except ValueError:
                     self._state = val
             else:
+                self._attr_available = False
                 self._state = None
                 
         except Exception as e:
+            self._attr_available = False
             _LOGGER.error("Błąd podczas odczytu danych sensora %s: %s", self._attr_translation_key, e)
