@@ -1,4 +1,5 @@
 import logging
+
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityFeature,
@@ -37,6 +38,7 @@ class CompitThermostat(ClimateEntity):
         ]
         
         self._attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
+        self._attr_available = True
 
         self._target_temp = None
         self._current_temp = None
@@ -66,14 +68,20 @@ class CompitThermostat(ClimateEntity):
     async def async_set_temperature(self, **kwargs):
         if ATTR_TEMPERATURE in kwargs:
             val = kwargs[ATTR_TEMPERATURE]
-            success = await self._data_manager.connector.set_device_parameter(
-                self._data_manager.device_id, 
-                CompitParameter.DHW_TARGET_TEMPERATURE, 
-                val
-            )
-            if success:
-                self._target_temp = val
-                self.async_write_ha_state()
+            try:
+                success = await self._data_manager.connector.set_device_parameter(
+                    self._data_manager.device_id, 
+                    CompitParameter.DHW_TARGET_TEMPERATURE, 
+                    val
+                )
+                if success:
+                    self._target_temp = val
+                else:
+                    self._attr_available = False
+            except Exception as e:
+                _LOGGER.error("Nie udało się ustawić temperatury (brak połączenia): %s", e)
+                self._attr_available = False
+            self.async_write_ha_state()
 
     async def async_set_hvac_mode(self, hvac_mode):
         mode_val = "auto"
@@ -86,25 +94,43 @@ class CompitThermostat(ClimateEntity):
         elif hvac_mode == HVACMode.OFF:
             mode_val = "disabled"
             
-        success = await self._data_manager.connector.select_device_option(
-            self._data_manager.device_id, 
-            CompitParameter.SOLAR_COMP_OPERATING_MODE, 
-            mode_val
-        )
-        if success:
-            self._hvac_mode = hvac_mode
-            self.async_write_ha_state()
+        try:
+            success = await self._data_manager.connector.select_device_option(
+                self._data_manager.device_id, 
+                CompitParameter.SOLAR_COMP_OPERATING_MODE, 
+                mode_val
+            )
+            if success:
+                self._hvac_mode = hvac_mode
+            else:
+                self._attr_available = False
+        except Exception as e:
+            _LOGGER.error("Nie udało się zmienić trybu (brak połączenia): %s", e)
+            self._attr_available = False
+        self.async_write_ha_state()
 
     async def async_update(self):
         try:
             await self._data_manager.async_update()
+            
+            if getattr(self._data_manager, "last_update_success", True) is False:
+                self._attr_available = False
+                return
+
             connector = self._data_manager.connector
             dev_id = self._data_manager.device_id
             
             t_target = connector.get_current_value(dev_id, CompitParameter.DHW_TARGET_TEMPERATURE)
-            # Zmieniono źródło aktualnej temperatury na czujnik góry zasobnika (T3)
             t_current = connector.get_current_value(dev_id, CompitParameter.TANK_TOP_T3_TEMPERATURE)
+            op_mode = connector.get_current_option(dev_id, CompitParameter.SOLAR_COMP_OPERATING_MODE)
             
+            # Jeśli wszystkie kluczowe parametry są puste, uznajemy urządzenie za rozłączone
+            if t_target is None and t_current is None and op_mode is None:
+                self._attr_available = False
+                return
+
+            self._attr_available = True
+
             if t_target is not None:
                 try: self._target_temp = float(t_target)
                 except ValueError: pass
@@ -112,8 +138,6 @@ class CompitThermostat(ClimateEntity):
             if t_current is not None:
                 try: self._current_temp = float(t_current)
                 except ValueError: pass
-                
-            op_mode = connector.get_current_option(dev_id, CompitParameter.SOLAR_COMP_OPERATING_MODE)
             
             if op_mode == "auto":
                 self._hvac_mode = HVACMode.HEAT
@@ -125,4 +149,5 @@ class CompitThermostat(ClimateEntity):
                 self._hvac_mode = HVACMode.OFF
                 
         except Exception as e:
+            self._attr_available = False
             _LOGGER.error("Błąd aktualizacji termostatu Compit: %s", e)
