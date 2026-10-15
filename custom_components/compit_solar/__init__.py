@@ -55,17 +55,28 @@ PARAMS.setdefault(CompitParameter.ENERGY_YESTERDAY, {})[68] = "__eelkwh"
 # -------------------------------------------------------------
 
 class CompitDeviceData:
-    """Współdzielona klasa zarządzająca buforowaniem odświeżania do max 1 zapytania na 45 sek."""
     def __init__(self, connector, device_id):
         self.connector = connector
         self.device_id = device_id
-        self.last_update = 0
+        self.last_update_success = True
+        self._lock = asyncio.Lock() # Wymaga: import asyncio na górze pliku
+
+    @Throttle( timedelta(seconds=45) )
+    async def _async_update_data(self):
+        try:
+            # Jeśli update_state zwraca False przy błędzie (jak o 17:19:57 w logach: "Failed to get state")
+            res = await self.connector.update_state(self.device_id)
+            if res is False:
+                self.last_update_success = False
+            else:
+                self.last_update_success = True
+        except Exception as err:
+            self.last_update_success = False
+            raise err
 
     async def async_update(self):
-        now = time.time()
-        if now - self.last_update > 45:
-            await self.connector.update_state(self.device_id)
-            self.last_update = now
+        async with self._lock:
+            await self._async_update_data()
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
