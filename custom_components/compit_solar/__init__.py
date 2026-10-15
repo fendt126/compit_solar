@@ -1,5 +1,8 @@
+import asyncio
+from datetime import timedelta
 import logging
-import time
+
+from homeassistant.util import Throttle
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
@@ -54,17 +57,17 @@ PARAMS.setdefault(CompitParameter.ENERGY_CONSUMPTION, {})[68] = "__eelmwh"
 PARAMS.setdefault(CompitParameter.ENERGY_YESTERDAY, {})[68] = "__eelkwh"
 # -------------------------------------------------------------
 
+
 class CompitDeviceData:
     def __init__(self, connector, device_id):
         self.connector = connector
         self.device_id = device_id
         self.last_update_success = True
-        self._lock = asyncio.Lock() # Wymaga: import asyncio na górze pliku
+        self._lock = asyncio.Lock()
 
-    @Throttle( timedelta(seconds=45) )
+    @Throttle(timedelta(seconds=45))
     async def _async_update_data(self):
         try:
-            # Jeśli update_state zwraca False przy błędzie (jak o 17:19:57 w logach: "Failed to get state")
             res = await self.connector.update_state(self.device_id)
             if res is False:
                 self.last_update_success = False
@@ -72,7 +75,7 @@ class CompitDeviceData:
                 self.last_update_success = True
         except Exception as err:
             self.last_update_success = False
-            raise err
+            _LOGGER.warning("Brak komunikacji z bramką Compit (urządzenie offline): %s", err)
 
     async def async_update(self):
         async with self._lock:
@@ -98,12 +101,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     data_manager = CompitDeviceData(connector, solar_device_id)
 
-    # Przekazanie instancji danych do poszczególnych platform (sensor / number)
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = data_manager
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+    return unload_ok
